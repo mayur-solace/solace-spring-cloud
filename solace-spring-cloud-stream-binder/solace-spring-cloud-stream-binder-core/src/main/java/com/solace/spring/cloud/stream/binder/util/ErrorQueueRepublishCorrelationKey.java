@@ -66,7 +66,11 @@ public class ErrorQueueRepublishCorrelationKey {
 					"Exceeded max error queue delivery attempts. XMLMessage %s will be re-queued onto queue %s",
 					messageContainer.getMessage().getMessageId(), flowReceiverContainer.getQueueName()));
 
-			RetryableAckRebindTask rebindTask = new RetryableAckRebindTask(flowReceiverContainer, messageContainer,
+			//TODO: No rebind. instead message should be REQUEUED/REJECTED.
+			//Original logic would requeue on main queue
+			flowReceiverContainer.nack(messageContainer);
+
+			/*RetryableAckRebindTask rebindTask = new RetryableAckRebindTask(flowReceiverContainer, messageContainer,
 					retryableTaskService);
 			try {
 				if (skipSyncAttempt || !rebindTask.run(0)) {
@@ -75,7 +79,7 @@ public class ErrorQueueRepublishCorrelationKey {
 			} catch (InterruptedException interruptedException) {
 				logger.info(String.format("Interrupt received while rebinding to queue %s with message %s",
 						flowReceiverContainer.getQueueName(), messageContainer.getMessage().getMessageId()));
-			}
+			}*/
 		}
 	}
 

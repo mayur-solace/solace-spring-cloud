@@ -59,6 +59,7 @@ class JCSMPBatchAcknowledgementCallback implements AcknowledgmentCallback {
 			JCSMPAcknowledgementCallback messageAcknowledgementCallback = acknowledgementCallbacks.get(msgIdx);
 			try {
 				if (msgIdx < acknowledgementCallbacks.size() - 1) {
+					//TODO: remove this doAsyncRebindIfNecessary call as no rebind expected
 					messageAcknowledgementCallback.doAsyncRebindIfNecessary();
 				}
 				messageAcknowledgementCallback.acknowledge(status);
@@ -83,6 +84,7 @@ class JCSMPBatchAcknowledgementCallback implements AcknowledgmentCallback {
 
 		Set<UUID> flowsReceiversToRebind = new HashSet<>();
 
+		//TODO: Remove this entire for loop - waiting for rebind
 		for (int msgIdx = 0; msgIdx < acknowledgementCallbacks.size(); msgIdx++) {
 			JCSMPAcknowledgementCallback messageAcknowledgementCallback = acknowledgementCallbacks.get(msgIdx);
 			try {
@@ -121,6 +123,7 @@ class JCSMPBatchAcknowledgementCallback implements AcknowledgmentCallback {
 			}
 		}
 
+		//TODO: Remove call to rebind
 		// in case there isn't an active rebind
 		for (UUID flowReceiverReferenceId : flowsReceiversToRebind) {
 			taskService.submit(new RetryableRebindTask(flowReceiverContainer, flowReceiverReferenceId, taskService));
