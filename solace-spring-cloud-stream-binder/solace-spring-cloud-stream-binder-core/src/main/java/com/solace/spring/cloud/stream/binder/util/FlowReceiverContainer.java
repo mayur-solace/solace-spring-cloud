@@ -12,6 +12,7 @@ import com.solacesystems.jcsmp.JCSMPFactory;
 import com.solacesystems.jcsmp.JCSMPProperties;
 import com.solacesystems.jcsmp.JCSMPSession;
 import com.solacesystems.jcsmp.JCSMPTransportException;
+import com.solacesystems.jcsmp.XMLMessage.Outcome;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.lang.Nullable;
@@ -109,6 +110,10 @@ public class FlowReceiverContainer {
 						.setEndpoint(JCSMPFactory.onlyInstance().createQueue(queueName))
 						.setAckMode(JCSMPProperties.SUPPORTED_MESSAGE_ACK_CLIENT)
 						.setStartState(!isPaused.get());
+
+				//TODO: Add Expected Settlement Outcomes to consumer flow properties
+				flowProperties.addRequiredSettlementOutcomes(Outcome.ACCEPTED, Outcome.FAILED, Outcome.REJECTED);
+
 				FlowReceiver flowReceiver = session.createFlow(null, flowProperties, endpointProperties, eventHandler);
 				if (eventHandler != null && eventHandler instanceof SolaceFlowHealthEventHandler) {
 					((SolaceFlowHealthEventHandler) eventHandler).setHealthStatusUp();
@@ -402,6 +407,35 @@ public class FlowReceiverContainer {
 		}
 
 		messageContainer.getMessage().ackMessage();
+		unacknowledgedMessageTracker.decrement();
+		messageContainer.setAcknowledged(true);
+		backOffExecutionReference.set(null);
+	}
+
+	/**
+	 * <p>Acknowledge the message off the broker and mark the provided message container as acknowledged.</p>
+	 * <p><b>WARNING:</b> Only messages created by this {@link FlowReceiverContainer} instance's {@link #receive()}
+	 * may be passed as a parameter to this function. Failure to do so will misalign the timing for when rebinds
+	 * will occur, causing rebinds to unintentionally trigger early/late.</p>
+	 * @param messageContainer The message
+	 * @throws SolaceStaleMessageException the message is stale and cannot be acknowledged
+	 */
+	//TODO: Added this method
+	public void nack(MessageContainer messageContainer) throws SolaceStaleMessageException {
+		if (messageContainer == null || messageContainer.isAcknowledged()) {
+			return;
+		}
+		if (messageContainer.isStale()) {
+			throw new SolaceStaleMessageException(String.format("Message container %s (XMLMessage %s) is stale",
+					messageContainer.getId(), messageContainer.getMessage().getMessageId()));
+		}
+
+		try {
+			messageContainer.getMessage().settle(Outcome.FAILED);
+		} catch (JCSMPException ex) {
+			throw new SolaceAcknowledgmentException("Failed to NACK/REQUEUE a message", ex);
+		}
+
 		unacknowledgedMessageTracker.decrement();
 		messageContainer.setAcknowledged(true);
 		backOffExecutionReference.set(null);
