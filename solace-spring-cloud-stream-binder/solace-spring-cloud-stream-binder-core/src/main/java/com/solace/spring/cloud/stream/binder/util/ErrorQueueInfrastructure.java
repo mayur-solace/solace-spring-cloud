@@ -15,19 +15,16 @@ public class ErrorQueueInfrastructure {
 	private final String producerKey;
 	private final String errorQueueName;
 	private final SolaceConsumerProperties consumerProperties;
-	private final RetryableTaskService retryableTaskService;
 	private final XMLMessageMapper xmlMessageMapper = new XMLMessageMapper();
 
 	private static final Log logger = LogFactory.getLog(ErrorQueueInfrastructure.class);
 
 	public ErrorQueueInfrastructure(JCSMPSessionProducerManager producerManager, String producerKey,
-									String errorQueueName, SolaceConsumerProperties consumerProperties,
-									RetryableTaskService retryableTaskService) {
+									String errorQueueName, SolaceConsumerProperties consumerProperties) {
 		this.producerManager = producerManager;
 		this.producerKey = producerKey;
 		this.errorQueueName = errorQueueName;
 		this.consumerProperties = consumerProperties;
-		this.retryableTaskService = retryableTaskService;
 	}
 
 	public void send(MessageContainer messageContainer, ErrorQueueRepublishCorrelationKey key) throws JCSMPException {
@@ -51,7 +48,7 @@ public class ErrorQueueInfrastructure {
 																  FlowReceiverContainer flowReceiverContainer,
 																  boolean hasTemporaryQueue) {
 		return new ErrorQueueRepublishCorrelationKey(this, messageContainer, flowReceiverContainer,
-				hasTemporaryQueue, retryableTaskService);
+				hasTemporaryQueue);
 	}
 
 	public String getErrorQueueName() {

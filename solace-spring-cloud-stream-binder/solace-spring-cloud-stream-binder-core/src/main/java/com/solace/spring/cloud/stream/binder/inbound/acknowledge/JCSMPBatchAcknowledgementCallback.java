@@ -1,44 +1,29 @@
 package com.solace.spring.cloud.stream.binder.inbound.acknowledge;
 
-import com.solace.spring.cloud.stream.binder.util.FlowReceiverContainer;
 import com.solace.spring.cloud.stream.binder.util.MessageContainer;
-import com.solace.spring.cloud.stream.binder.util.RetryableRebindTask;
-import com.solace.spring.cloud.stream.binder.util.RetryableTaskService;
 import com.solace.spring.cloud.stream.binder.util.SolaceBatchAcknowledgementException;
 import com.solace.spring.cloud.stream.binder.util.SolaceStaleMessageException;
-import com.solace.spring.cloud.stream.binder.util.UnboundFlowReceiverContainerException;
-import com.solacesystems.jcsmp.JCSMPException;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.integration.acks.AcknowledgmentCallback;
-
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * Acknowledgment callback for a batch of messages.
  */
 class JCSMPBatchAcknowledgementCallback implements AcknowledgmentCallback {
 	private final List<JCSMPAcknowledgementCallback> acknowledgementCallbacks;
-	private final FlowReceiverContainer flowReceiverContainer;
-	private final RetryableTaskService taskService;
 	private boolean acknowledged = false;
 	private boolean autoAckEnabled = true;
 
 	private static final Log logger = LogFactory.getLog(JCSMPBatchAcknowledgementCallback.class);
 
-	JCSMPBatchAcknowledgementCallback(List<JCSMPAcknowledgementCallback> acknowledgementCallbacks,
-									  FlowReceiverContainer flowReceiverContainer,
-									  RetryableTaskService taskService) {
+	JCSMPBatchAcknowledgementCallback(List<JCSMPAcknowledgementCallback> acknowledgementCallbacks) {
 		this.acknowledgementCallbacks = acknowledgementCallbacks;
-		this.flowReceiverContainer = flowReceiverContainer;
-		this.taskService = taskService;
 	}
 
 	@Override
@@ -58,10 +43,6 @@ class JCSMPBatchAcknowledgementCallback implements AcknowledgmentCallback {
 		for (int msgIdx = 0; msgIdx < acknowledgementCallbacks.size(); msgIdx++) {
 			JCSMPAcknowledgementCallback messageAcknowledgementCallback = acknowledgementCallbacks.get(msgIdx);
 			try {
-				if (msgIdx < acknowledgementCallbacks.size() - 1) {
-					//TODO: remove this doAsyncRebindIfNecessary call as no rebind expected
-					messageAcknowledgementCallback.doAsyncRebindIfNecessary();
-				}
 				messageAcknowledgementCallback.acknowledge(status);
 				if (!hasAtLeastOneSuccessAck) {
 					hasAtLeastOneSuccessAck = messageAcknowledgementCallback.getMessageContainer().isAcknowledged();
@@ -76,57 +57,6 @@ class JCSMPBatchAcknowledgementCallback implements AcknowledgmentCallback {
 					allStaleExceptions = isStale;
 				}
 			}
-		}
-
-		if (logger.isTraceEnabled()) {
-			logger.trace("Beginning to wait for async rebinds to complete if necessary");
-		}
-
-		Set<UUID> flowsReceiversToRebind = new HashSet<>();
-
-		//TODO: Remove this entire for loop - waiting for rebind
-		for (int msgIdx = 0; msgIdx < acknowledgementCallbacks.size(); msgIdx++) {
-			JCSMPAcknowledgementCallback messageAcknowledgementCallback = acknowledgementCallbacks.get(msgIdx);
-			try {
-				messageAcknowledgementCallback.awaitRebindIfNecessary(1, TimeUnit.MILLISECONDS);
-			} catch (ExecutionException | InterruptedException exception) {
-				if (exception instanceof ExecutionException && (exception.getCause() instanceof JCSMPException ||
-						exception.getCause() instanceof UnboundFlowReceiverContainerException)) {
-					UUID flowReceiverReferenceId = messageAcknowledgementCallback.getMessageContainer()
-							.getFlowReceiverReferenceId();
-					if (!flowsReceiversToRebind.add(flowReceiverReferenceId) && logger.isDebugEnabled()) {
-						logger.debug(String.format("Failed to rebind flow container %s . " +
-										"Sending new async rebind task in case one isn't already active",
-								flowReceiverReferenceId), exception);
-					}
-					continue;
-				}
-
-				Throwable e = exception instanceof ExecutionException ? exception.getCause() : exception;
-				boolean isStale = logPotentialStaleException(e, messageAcknowledgementCallback.getMessageContainer());
-				failedMessageIndexes.add(msgIdx);
-				if (firstEncounteredException == null) {
-					firstEncounteredException = e;
-				}
-				if (allStaleExceptions || (msgIdx == 0 && !hasAtLeastOneSuccessAck)) {
-					allStaleExceptions = isStale;
-				}
-			} catch (TimeoutException e) {
-				UUID flowReceiverReferenceId = messageAcknowledgementCallback.getMessageContainer()
-						.getFlowReceiverReferenceId();
-				if (!flowsReceiversToRebind.add(flowReceiverReferenceId) && logger.isTraceEnabled()) {
-					logger.trace(String.format("Timed out while waiting for rebind of flow receiver container %s, " +
-							"sending new async rebind task in case one isn't already active", flowReceiverReferenceId),
-							e);
-				}
-
-			}
-		}
-
-		//TODO: Remove call to rebind
-		// in case there isn't an active rebind
-		for (UUID flowReceiverReferenceId : flowsReceiversToRebind) {
-			taskService.submit(new RetryableRebindTask(flowReceiverContainer, flowReceiverReferenceId, taskService));
 		}
 
 		if (firstEncounteredException != null) {
@@ -185,5 +115,54 @@ class JCSMPBatchAcknowledgementCallback implements AcknowledgmentCallback {
 	@Override
 	public boolean isAutoAck() {
 		return autoAckEnabled;
+	}
+
+	boolean isErrorQueueEnabled() {
+		return acknowledgementCallbacks.get(0).isErrorQueueEnabled();
+	}
+
+	boolean republishToErrorQueue() {
+		if (isAcknowledged()) {
+			if (logger.isDebugEnabled()) {
+				logger.debug("Batch message is already acknowledged");
+			}
+			return false;
+		}
+
+		Set<Integer> failedMessageIndexes = new HashSet<>();
+		Throwable firstEncounteredException = null;
+		boolean allStaleExceptions = false;
+		AtomicInteger numAcked = new AtomicInteger(0);
+		for (int msgIdx = 0; msgIdx < acknowledgementCallbacks.size(); msgIdx++) {
+			JCSMPAcknowledgementCallback messageAcknowledgementCallback = acknowledgementCallbacks.get(
+					msgIdx);
+			try {
+				if (messageAcknowledgementCallback.republishToErrorQueue()) {
+					messageAcknowledgementCallback.setAcknowledged(true);
+				}
+
+				if (messageAcknowledgementCallback.isAcknowledged()) {
+					numAcked.getAndIncrement();
+				}
+			} catch (Exception e) {
+				boolean isStale = logPotentialStaleException(e,
+						messageAcknowledgementCallback.getMessageContainer());
+				failedMessageIndexes.add(msgIdx);
+				if (firstEncounteredException == null) {
+					firstEncounteredException = e;
+				}
+				if (allStaleExceptions || msgIdx == 0) {
+					allStaleExceptions = isStale;
+				}
+			}
+		}
+
+		if (firstEncounteredException != null) {
+			throw new SolaceBatchAcknowledgementException(failedMessageIndexes, allStaleExceptions,
+					"Failed to acknowledge batch message", firstEncounteredException);
+		}
+
+		acknowledged = true;
+		return acknowledgementCallbacks.size() == numAcked.get();
 	}
 }

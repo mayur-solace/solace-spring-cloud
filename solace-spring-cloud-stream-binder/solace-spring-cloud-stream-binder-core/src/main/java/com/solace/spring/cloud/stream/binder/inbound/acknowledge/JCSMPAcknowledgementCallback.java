@@ -3,7 +3,6 @@ package com.solace.spring.cloud.stream.binder.inbound.acknowledge;
 import com.solace.spring.cloud.stream.binder.util.ErrorQueueInfrastructure;
 import com.solace.spring.cloud.stream.binder.util.FlowReceiverContainer;
 import com.solace.spring.cloud.stream.binder.util.MessageContainer;
-import com.solace.spring.cloud.stream.binder.util.RetryableTaskService;
 import com.solace.spring.cloud.stream.binder.util.SolaceAcknowledgmentException;
 import com.solace.spring.cloud.stream.binder.util.SolaceStaleMessageException;
 import com.solacesystems.jcsmp.XMLMessage;
@@ -12,34 +11,23 @@ import org.apache.commons.logging.LogFactory;
 import org.springframework.integration.acks.AcknowledgmentCallback;
 import org.springframework.lang.Nullable;
 
-import java.util.UUID;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-
 class JCSMPAcknowledgementCallback implements AcknowledgmentCallback {
   private final MessageContainer messageContainer;
   private final FlowReceiverContainer flowReceiverContainer;
   private final boolean hasTemporaryQueue;
   private final ErrorQueueInfrastructure errorQueueInfrastructure;
-  private final RetryableTaskService taskService;
   private boolean acknowledged = false;
   private boolean autoAckEnabled = true;
-  private boolean asyncRebind = false;
-  private Future<UUID> rebindFuture;
 
   private static final Log logger = LogFactory.getLog(JCSMPAcknowledgementCallback.class);
 
   JCSMPAcknowledgementCallback(MessageContainer messageContainer,
       FlowReceiverContainer flowReceiverContainer,
       boolean hasTemporaryQueue,
-      RetryableTaskService taskService,
       @Nullable ErrorQueueInfrastructure errorQueueInfrastructure) {
     this.messageContainer = messageContainer;
     this.flowReceiverContainer = flowReceiverContainer;
     this.hasTemporaryQueue = hasTemporaryQueue;
-    this.taskService = taskService;
     this.errorQueueInfrastructure = errorQueueInfrastructure;
   }
 
@@ -63,27 +51,12 @@ class JCSMPAcknowledgementCallback implements AcknowledgmentCallback {
         case REJECT:
           if (republishToErrorQueue()) {
             break;
-          } else if (!hasTemporaryQueue) {
-            //TODO: Should this be REQUEUED (Outcome.FAILED) or REJECTED (Outcome.REJECTED) ??
-            //Real rejection would be change in functionality for end users: REJECTED (Outcome.REJECTED)
-            acknowledge(Status.REQUEUE);
           } else {
-            if (logger.isDebugEnabled()) {
-              logger.debug(String.format(
-                  "Cannot %s %s %s since this flow is bound to a temporary queue, failed message " +
-                      "will be discarded",
-                  Status.REQUEUE, XMLMessage.class.getSimpleName(),
-                  messageContainer.getMessage().getMessageId()));
-            }
-            flowReceiverContainer.acknowledge(messageContainer); //TODO: instad of ack, JCSMP REJECT it ??
+            flowReceiverContainer.reject(messageContainer);
           }
           break;
         case REQUEUE:
-          if (hasTemporaryQueue) {
-            throw new UnsupportedOperationException(String.format(
-                "Cannot %s XMLMessage %s, this operation is not supported with temporary queues",
-                status, messageContainer.getMessage().getMessageId()));
-          } else if (messageContainer.isStale()) {
+          if (messageContainer.isStale()) {
             throw new SolaceStaleMessageException(String.format(
                 "Message container %s (XMLMessage %s) is stale",
                 messageContainer.getId(), messageContainer.getMessage().getMessageId()));
@@ -93,18 +66,7 @@ class JCSMPAcknowledgementCallback implements AcknowledgmentCallback {
                   XMLMessage.class.getSimpleName(), messageContainer.getMessage().getMessageId(),
                   flowReceiverContainer.getQueueName()));
             }
-            //TODO: No Rebind. REQUEUE message.
-            //Original logic would rebind the consumer to REQUEUE message.
-            flowReceiverContainer.nack(messageContainer);
-						/*if (!asyncRebind) {
-							RetryableAckRebindTask rebindTask = new RetryableAckRebindTask(flowReceiverContainer,
-									messageContainer, taskService);
-							if (!rebindTask.run(0)) {
-								taskService.submit(rebindTask);
-							}
-						} else {
-							rebindFuture = flowReceiverContainer.futureAcknowledgeRebind(messageContainer);
-						}*/
+            flowReceiverContainer.requeue(messageContainer);
           }
       }
     } catch (SolaceAcknowledgmentException e) {
@@ -123,7 +85,7 @@ class JCSMPAcknowledgementCallback implements AcknowledgmentCallback {
    * @return {@code true} if successful, {@code false} if {@code errorQueueInfrastructure} is not
    * defined.
    */
-  private boolean republishToErrorQueue() throws SolaceStaleMessageException {
+   boolean republishToErrorQueue() throws SolaceStaleMessageException {
     if (errorQueueInfrastructure == null) {
       return false;
     }
@@ -167,34 +129,11 @@ class JCSMPAcknowledgementCallback implements AcknowledgmentCallback {
     return messageContainer;
   }
 
-  /**
-   * Directs this acknowledgment callback to do an asynchronous rebind if rebinding occurs during
-   * acknowledgment.
-   */
-  void doAsyncRebindIfNecessary() {
-    asyncRebind = true;
+  boolean isErrorQueueEnabled() {
+     return  errorQueueInfrastructure != null;
   }
 
-  /**
-   * If async-rebind was enabled and rebind was performed on this acknowledgment callback, wait for
-   * rebind to finish.
-   *
-   * @param timeout Timeout value, wait forever if timeout < 0
-   * @param unit    Timeout units
-   * @throws ExecutionException   rebind exception
-   * @throws InterruptedException wait was interrupted
-   * @throws TimeoutException     timeout elapsed
-   */
-  void awaitRebindIfNecessary(long timeout, TimeUnit unit)
-      throws ExecutionException, InterruptedException, TimeoutException {
-    if (rebindFuture != null) {
-      if (timeout >= 0) {
-        rebindFuture.get(timeout, unit);
-      } else {
-        rebindFuture.get();
-      }
-    }
+  void setAcknowledged(boolean acknowledged) {
+    this.acknowledged = acknowledged;
   }
-
-
 }

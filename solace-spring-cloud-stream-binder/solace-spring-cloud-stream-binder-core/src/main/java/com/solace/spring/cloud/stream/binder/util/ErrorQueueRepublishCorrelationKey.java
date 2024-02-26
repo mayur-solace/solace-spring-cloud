@@ -8,7 +8,6 @@ public class ErrorQueueRepublishCorrelationKey {
 	private final MessageContainer messageContainer;
 	private final FlowReceiverContainer flowReceiverContainer;
 	private final boolean hasTemporaryQueue;
-	private final RetryableTaskService retryableTaskService;
 	private long errorQueueDeliveryAttempt = 0;
 
 	private static final Log logger = LogFactory.getLog(ErrorQueueRepublishCorrelationKey.class);
@@ -16,13 +15,11 @@ public class ErrorQueueRepublishCorrelationKey {
 	public ErrorQueueRepublishCorrelationKey(ErrorQueueInfrastructure errorQueueInfrastructure,
 											 MessageContainer messageContainer,
 											 FlowReceiverContainer flowReceiverContainer,
-											 boolean hasTemporaryQueue,
-											 RetryableTaskService retryableTaskService) {
+											 boolean hasTemporaryQueue) {
 		this.errorQueueInfrastructure = errorQueueInfrastructure;
 		this.messageContainer = messageContainer;
 		this.flowReceiverContainer = flowReceiverContainer;
 		this.hasTemporaryQueue = hasTemporaryQueue;
-		this.retryableTaskService = retryableTaskService;
 	}
 
 	public void handleSuccess() throws SolaceStaleMessageException {
@@ -54,21 +51,23 @@ public class ErrorQueueRepublishCorrelationKey {
 		}
 	}
 
+	//TODO: MP: Remove skipSyncAttempt flag and hasTemporaryQueue
 	private void fallback(boolean skipSyncAttempt) throws SolaceStaleMessageException {
-		if (hasTemporaryQueue) {
+		//TODO:
+		/*if (hasTemporaryQueue) {
 			logger.info(String.format(
 					"Exceeded max error queue delivery attempts and cannot requeue XMLMessage %s since queue %s is " +
 							"temporary. Failed message will be discarded.",
 					messageContainer.getMessage().getMessageId(), flowReceiverContainer.getQueueName()));
 			flowReceiverContainer.acknowledge(messageContainer);
-		} else {
+		} else {*/
 			logger.info(String.format(
 					"Exceeded max error queue delivery attempts. XMLMessage %s will be re-queued onto queue %s",
 					messageContainer.getMessage().getMessageId(), flowReceiverContainer.getQueueName()));
 
 			//TODO: No rebind. instead message should be REQUEUED/REJECTED.
 			//Original logic would requeue on main queue
-			flowReceiverContainer.nack(messageContainer);
+			flowReceiverContainer.requeue(messageContainer);
 
 			/*RetryableAckRebindTask rebindTask = new RetryableAckRebindTask(flowReceiverContainer, messageContainer,
 					retryableTaskService);
@@ -79,8 +78,8 @@ public class ErrorQueueRepublishCorrelationKey {
 			} catch (InterruptedException interruptedException) {
 				logger.info(String.format("Interrupt received while rebinding to queue %s with message %s",
 						flowReceiverContainer.getQueueName(), messageContainer.getMessage().getMessageId()));
-			}*/
-		}
+			}
+		}*/
 	}
 
 	public String getSourceMessageId() {

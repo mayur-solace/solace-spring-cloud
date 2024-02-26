@@ -7,7 +7,6 @@ import com.solace.spring.cloud.stream.binder.properties.SolaceConsumerProperties
 import com.solace.spring.cloud.stream.binder.provisioning.SolaceConsumerDestination;
 import com.solace.spring.cloud.stream.binder.util.ErrorQueueInfrastructure;
 import com.solace.spring.cloud.stream.binder.util.FlowReceiverContainer;
-import com.solace.spring.cloud.stream.binder.util.RetryableTaskService;
 import com.solace.spring.cloud.stream.binder.util.SolaceMessageConversionException;
 import com.solace.spring.cloud.stream.binder.util.SolaceStaleMessageException;
 import com.solacesystems.jcsmp.EndpointProperties;
@@ -15,6 +14,18 @@ import com.solacesystems.jcsmp.JCSMPException;
 import com.solacesystems.jcsmp.JCSMPFactory;
 import com.solacesystems.jcsmp.JCSMPSession;
 import com.solacesystems.jcsmp.Queue;
+import com.solacesystems.jcsmp.XMLMessage.Outcome;
+import com.solacesystems.jcsmp.impl.JCSMPBasicSession;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -33,17 +44,6 @@ import org.springframework.retry.support.RetryTemplate;
 import org.springframework.util.Assert;
 import org.springframework.util.backoff.ExponentialBackOff;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
-
 public class JCSMPInboundChannelAdapter extends MessageProducerSupport implements OrderlyShutdownCapable, Pausable {
 	private final String id = UUID.randomUUID().toString();
 	private final SolaceConsumerDestination consumerDestination;
@@ -51,7 +51,6 @@ public class JCSMPInboundChannelAdapter extends MessageProducerSupport implement
 	private final ExtendedConsumerProperties<SolaceConsumerProperties> consumerProperties;
 	private final EndpointProperties endpointProperties;
 	@Nullable private final SolaceMeterAccessor solaceMeterAccessor;
-	private final RetryableTaskService taskService;
 	private final long shutdownInterruptThresholdInMillis = 500; //TODO Make this configurable
 	private final List<FlowReceiverContainer> flowReceivers;
 	private final Set<AtomicBoolean> consumerStopFlags;
@@ -69,13 +68,11 @@ public class JCSMPInboundChannelAdapter extends MessageProducerSupport implement
 
 	public JCSMPInboundChannelAdapter(SolaceConsumerDestination consumerDestination,
 									  JCSMPSession jcsmpSession,
-									  RetryableTaskService taskService,
 									  ExtendedConsumerProperties<SolaceConsumerProperties> consumerProperties,
 									  @Nullable EndpointProperties endpointProperties,
 									  @Nullable SolaceMeterAccessor solaceMeterAccessor) {
 		this.consumerDestination = consumerDestination;
 		this.jcsmpSession = jcsmpSession;
-		this.taskService = taskService;
 		this.consumerProperties = consumerProperties;
 		this.endpointProperties = endpointProperties;
 		this.solaceMeterAccessor = solaceMeterAccessor;
@@ -101,6 +98,13 @@ public class JCSMPInboundChannelAdapter extends MessageProducerSupport implement
 			throw new MessagingException(msg);
 		}
 
+		if (jcsmpSession instanceof JCSMPBasicSession jcsmpBasicSession
+				&& !jcsmpBasicSession.isRequiredSettlementCapable(
+				Set.of(Outcome.ACCEPTED, Outcome.FAILED, Outcome.REJECTED))) {
+			String msg = String.format("The Solace PubSub+ Broker doesn't support message NACK capability, <inbound adapter %s>", id);
+			throw new MessagingException(msg);
+		}
+
 		if (executorService != null && !executorService.isTerminated()) {
 			logger.warn(String.format("Unexpectedly found running executor service while starting inbound adapter %s, " +
 					"closing it...", id));
@@ -120,8 +124,7 @@ public class JCSMPInboundChannelAdapter extends MessageProducerSupport implement
 			FlowReceiverContainer flowReceiverContainer = new FlowReceiverContainer(
 					jcsmpSession,
 					queueName,
-					endpointProperties,
-					exponentialBackOff);
+					endpointProperties);
 			flowReceiverContainer.setRebindWaitTimeout(consumerProperties.getExtension().getFlowPreRebindWaitTimeout(),
 					TimeUnit.MILLISECONDS);
 			if (paused.get()) {
@@ -249,7 +252,7 @@ public class JCSMPInboundChannelAdapter extends MessageProducerSupport implement
 
 	private InboundXMLMessageListener buildListener(FlowReceiverContainer flowReceiverContainer) {
 		JCSMPAcknowledgementCallbackFactory ackCallbackFactory = new JCSMPAcknowledgementCallbackFactory(
-				flowReceiverContainer, consumerDestination.isTemporary(), taskService);
+				flowReceiverContainer, consumerDestination.isTemporary());
 		ackCallbackFactory.setErrorQueueInfrastructure(errorQueueInfrastructure);
 
 		InboundXMLMessageListener listener;

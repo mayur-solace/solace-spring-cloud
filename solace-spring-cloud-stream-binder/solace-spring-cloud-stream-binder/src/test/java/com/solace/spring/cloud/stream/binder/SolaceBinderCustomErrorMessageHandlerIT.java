@@ -309,6 +309,7 @@ public class SolaceBinderCustomErrorMessageHandlerIT {
 		consumerBinding.unbind();
 	}
 
+	//TODO: MP - No More Rebind and Stale exception expected. Rename a test accordingly.
 	@CartesianTest(name = "[{index}] channelType={0}, batchMode={1}")
 	public <T> void testConsumerOverrideErrorMessageHandlerThrowExceptionAndStale(
 			@Values(classes = {DirectChannel.class, PollableSource.class}) Class<T> channelType,
@@ -355,6 +356,7 @@ public class SolaceBinderCustomErrorMessageHandlerIT {
 		consumerProperties.setMaxAttempts(1);
 		consumerProperties.getExtension().setAutoBindErrorQueue(true);
 		consumerProperties.getExtension().setFlowPreRebindWaitTimeout(0);
+		consumerProperties.getExtension().setQueueMaxMsgRedelivery(1);
 		Binding<T> consumerBinding = consumerInfrastructureUtil.createBinding(binder,
 				destination0, group0, moduleInputChannel, consumerProperties);
 
@@ -408,7 +410,7 @@ public class SolaceBinderCustomErrorMessageHandlerIT {
 				.getMsgVpnQueue(vpnName, queueName, null)
 				.getData()
 				.getBindSuccessCount())
-				.isEqualTo(3));
+				.isEqualTo(2));
 
 		continueLatch.countDown();
 		softly.assertAll();
@@ -423,11 +425,11 @@ public class SolaceBinderCustomErrorMessageHandlerIT {
 					.getMsgVpnQueue(vpnName, queueName, null)
 					.getData()
 					.getRedeliveredMsgCount())
-					.isEqualTo(messages.size());
+					.isEqualTo(messages.size()/2);
 			assertThat(sempV2Api.monitor()
 					.getMsgVpnQueueMsgs(vpnName, errorQueueName, 1, null, null, null)
 					.getData())
-					.hasSize(0);
+					.hasSize(1);
 		});
 
 		producerBinding.unbind();
