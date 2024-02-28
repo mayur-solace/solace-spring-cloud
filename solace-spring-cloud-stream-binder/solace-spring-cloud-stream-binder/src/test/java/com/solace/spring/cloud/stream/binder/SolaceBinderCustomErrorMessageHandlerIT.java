@@ -309,9 +309,8 @@ public class SolaceBinderCustomErrorMessageHandlerIT {
 		consumerBinding.unbind();
 	}
 
-	//TODO: MP - No More Rebind and Stale exception expected. Rename a test accordingly.
 	@CartesianTest(name = "[{index}] channelType={0}, batchMode={1}")
-	public <T> void testConsumerOverrideErrorMessageHandlerThrowExceptionAndStale(
+	public <T> void testConsumerOverrideErrorMessageHandlerThrowException(
 			@Values(classes = {DirectChannel.class, PollableSource.class}) Class<T> channelType,
 			@Values(booleans = {false, true}) boolean batchMode,
 			JCSMPSession jcsmpSession,

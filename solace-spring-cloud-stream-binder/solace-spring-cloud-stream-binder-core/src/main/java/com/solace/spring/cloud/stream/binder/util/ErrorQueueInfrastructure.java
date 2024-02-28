@@ -45,10 +45,8 @@ public class ErrorQueueInfrastructure {
 	}
 
 	public ErrorQueueRepublishCorrelationKey createCorrelationKey(MessageContainer messageContainer,
-																  FlowReceiverContainer flowReceiverContainer,
-																  boolean hasTemporaryQueue) {
-		return new ErrorQueueRepublishCorrelationKey(this, messageContainer, flowReceiverContainer,
-				hasTemporaryQueue);
+																  FlowReceiverContainer flowReceiverContainer) {
+		return new ErrorQueueRepublishCorrelationKey(this, messageContainer, flowReceiverContainer);
 	}
 
 	public String getErrorQueueName() {

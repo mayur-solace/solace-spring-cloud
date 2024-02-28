@@ -1,6 +1,6 @@
 package com.solace.spring.cloud.stream.binder.util;
 
-//TODO: Fix javadocs
+//TODO: MP: Fix javadocs
 //Review if this exception is still required?
 /**
  * <p>Flow receiver container is not bound to a flow receiver.</p>

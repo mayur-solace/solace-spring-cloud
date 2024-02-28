@@ -8,12 +8,10 @@ import org.springframework.integration.acks.AcknowledgmentCallback;
 
 public class JCSMPAcknowledgementCallbackFactory {
 	private final FlowReceiverContainer flowReceiverContainer;
-	private final boolean hasTemporaryQueue;
 	private ErrorQueueInfrastructure errorQueueInfrastructure;
 
-	public JCSMPAcknowledgementCallbackFactory(FlowReceiverContainer flowReceiverContainer, boolean hasTemporaryQueue) {
+	public JCSMPAcknowledgementCallbackFactory(FlowReceiverContainer flowReceiverContainer) {
 		this.flowReceiverContainer = flowReceiverContainer;
-		this.hasTemporaryQueue = hasTemporaryQueue;
 	}
 
 	public void setErrorQueueInfrastructure(ErrorQueueInfrastructure errorQueueInfrastructure) {
@@ -30,7 +28,7 @@ public class JCSMPAcknowledgementCallbackFactory {
 	}
 
 	private JCSMPAcknowledgementCallback createJCSMPCallback(MessageContainer messageContainer) {
-		return new JCSMPAcknowledgementCallback(messageContainer, flowReceiverContainer, hasTemporaryQueue,
+		return new JCSMPAcknowledgementCallback(messageContainer, flowReceiverContainer,
 				errorQueueInfrastructure);
 	}
 

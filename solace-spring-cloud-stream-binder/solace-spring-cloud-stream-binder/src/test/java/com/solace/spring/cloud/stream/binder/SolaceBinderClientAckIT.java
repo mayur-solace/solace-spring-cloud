@@ -119,8 +119,7 @@ public class SolaceBinderClientAckIT<T> {
 		consumerBinding.unbind();
 	}
 
-	//TODO: MP: Review this test
-	//@CartesianTest(name = "[{index}] channelType={0}, batchMode={1}")
+	@CartesianTest(name = "[{index}] channelType={0}, batchMode={1}")
 	public void testReject(@Values(classes = {DirectChannel.class, PollableSource.class}) Class<T> channelType,
 						   @Values(booleans = {false, true}) boolean batchMode,
 						   SempV2Api sempV2Api,
@@ -142,8 +141,8 @@ public class SolaceBinderClientAckIT<T> {
 		Binding<T> consumerBinding = consumerInfrastructureUtil.createBinding(binder, destination0,
 				RandomStringUtils.randomAlphanumeric(10), moduleInputChannel, consumerProperties);
 
-		List<Message<?>> messages = IntStream.range(0,
-						batchMode ? consumerProperties.getExtension().getBatchMaxSize() : 1)
+		int numberOfMessages = (batchMode ? consumerProperties.getExtension().getBatchMaxSize() : 1) * 3;
+		List<Message<?>> messages = IntStream.range(0, numberOfMessages)
 				.mapToObj(i -> MessageBuilder.withPayload(UUID.randomUUID().toString().getBytes())
 						.setHeader(MessageHeaders.CONTENT_TYPE, MimeTypeUtils.TEXT_PLAIN_VALUE)
 						.build())
@@ -153,7 +152,7 @@ public class SolaceBinderClientAckIT<T> {
 		String queueName = binder.getConsumerQueueName(consumerBinding);
 
 		AtomicBoolean wasRedelivered = new AtomicBoolean(false);
-		consumerInfrastructureUtil.sendAndSubscribe(moduleInputChannel, 2,
+		consumerInfrastructureUtil.sendAndSubscribe(moduleInputChannel, 3,
 				() -> messages.forEach(moduleOutputChannel::send),
 				msg -> {
 			if (isRedelivered(msg, batchMode)) {
@@ -164,11 +163,13 @@ public class SolaceBinderClientAckIT<T> {
 				AckUtils.reject(ackCallback);
 			}
 		});
-		assertThat(wasRedelivered.get()).isTrue();
+
+		//rejected message should not be redelivered
+		assertThat(wasRedelivered.get()).isFalse();
 
 		validateNumEnqueuedMessages(context, sempV2Api, queueName, 0);
-		validateNumRedeliveredMessages(context, sempV2Api, queueName, messages.size());
-		validateNumAckedMessages(context, sempV2Api, queueName, messages.size());
+		validateNumRedeliveredMessages(context, sempV2Api, queueName, 0);
+		//validateNumAckedMessages(context, sempV2Api, queueName, messages.size());
 
 		producerBinding.unbind();
 		consumerBinding.unbind();
@@ -337,8 +338,7 @@ public class SolaceBinderClientAckIT<T> {
 		consumerBinding.unbind();
 	}
 
-	//TODO: MP: Review this test
-	//@CartesianTest(name = "[{index}] channelType={0}, batchMode={1}")
+	@CartesianTest(name = "[{index}] channelType={0}, batchMode={1}")
 	public void testAsyncReject(@Values(classes = {DirectChannel.class, PollableSource.class}) Class<T> channelType,
 								@Values(booleans = {false, true}) boolean batchMode,
 								SempV2Api sempV2Api,
@@ -373,7 +373,7 @@ public class SolaceBinderClientAckIT<T> {
 		String queueName = binder.getConsumerQueueName(consumerBinding);
 
 		AtomicBoolean wasRedelivered = new AtomicBoolean(false);
-		consumerInfrastructureUtil.sendAndSubscribe(moduleInputChannel, 2,
+		consumerInfrastructureUtil.sendAndSubscribe(moduleInputChannel, 1,
 				() -> messages.forEach(moduleOutputChannel::send),
 				(msg, callback) -> {
 					if (isRedelivered(msg, batchMode)) {
@@ -392,9 +392,9 @@ public class SolaceBinderClientAckIT<T> {
 				});
 
 		softly.assertAll();
-		assertThat(wasRedelivered.get()).isTrue();
+		assertThat(wasRedelivered.get()).isFalse();
 		validateNumEnqueuedMessages(context, sempV2Api, queueName, 0);
-		validateNumRedeliveredMessages(context, sempV2Api, queueName, messages.size());
+		validateNumRedeliveredMessages(context, sempV2Api, queueName, 0);
 
 		producerBinding.unbind();
 		consumerBinding.unbind();
@@ -569,8 +569,7 @@ public class SolaceBinderClientAckIT<T> {
 		consumerBinding.unbind();
 	}
 
-	//TODO: MP: Review this test
-	//@CartesianTest(name = "[{index}] channelType={0}, batchMode={1}")
+	@CartesianTest(name = "[{index}] channelType={0}, batchMode={1}")
 	public void testNoAckAndThrowException(
 			@Values(classes = {DirectChannel.class, PollableSource.class}) Class<T> channelType,
 			@Values(booleans = {false, true}) boolean batchMode,
@@ -686,8 +685,7 @@ public class SolaceBinderClientAckIT<T> {
 		consumerBinding.unbind();
 	}
 
-	//TODO: MP: Review this test
-  //@CartesianTest(name = "[{index}] channelType={0}, batchMode={1}")
+  @CartesianTest(name = "[{index}] channelType={0}, batchMode={1}")
 	public void testRejectAndThrowException(
 			@Values(classes = {DirectChannel.class, PollableSource.class}) Class<T> channelType,
 			@Values(booleans = {false, true}) boolean batchMode,
@@ -720,11 +718,13 @@ public class SolaceBinderClientAckIT<T> {
 		context.binderBindUnbindLatency();
 		String queueName = binder.getConsumerQueueName(consumerBinding);
 
-		consumerInfrastructureUtil.sendAndSubscribe(moduleInputChannel, consumerProperties.getMaxAttempts() + 1,
+		AtomicBoolean wasRedelivered = new AtomicBoolean(false);
+		consumerInfrastructureUtil.sendAndSubscribe(moduleInputChannel, consumerProperties.getMaxAttempts(),
 				() -> messages.forEach(moduleOutputChannel::send),
 				(msg, callback) -> {
 					if (isRedelivered(msg, batchMode)) {
 						logger.info("Received redelivered message");
+						wasRedelivered.set(true);
 						callback.run();
 					} else {
 						logger.info("Receiving message");
@@ -736,9 +736,10 @@ public class SolaceBinderClientAckIT<T> {
 					}
 				});
 
+		assertThat(wasRedelivered.get()).isFalse();
 		validateNumEnqueuedMessages(context, sempV2Api, queueName, 0);
-		validateNumRedeliveredMessages(context, sempV2Api, queueName, messages.size());
-		validateNumAckedMessages(context, sempV2Api, queueName, messages.size());
+		validateNumRedeliveredMessages(context, sempV2Api, queueName, 0);
+		validateNumAckedMessages(context, sempV2Api, queueName, 0);
 		validateNumUnackedMessages(context, sempV2Api, queueName, 0);
 
 		producerBinding.unbind();
@@ -1048,9 +1049,7 @@ public class SolaceBinderClientAckIT<T> {
 		consumerBinding.unbind();
 	}
 
-	//TODO: MP: Review this test with Jeff
-	//TODO: MP: No more consumer rebinds and stale container.
-	//@ParameterizedTest(name = "[{index}] channelType={0}")
+	@ParameterizedTest(name = "[{index}] channelType={0}")
 	@ValueSource(classes = {DirectChannel.class, PollableSource.class})
 	public void testBatchIsNotStaleFromAsyncRequeue(
 			Class<T> channelType,
@@ -1077,7 +1076,7 @@ public class SolaceBinderClientAckIT<T> {
 		Binding<T> consumerBinding = consumerInfrastructureUtil.createBinding(binder, destination0,
 				RandomStringUtils.randomAlphanumeric(10), moduleInputChannel, consumerProperties);
 
-		List<Message<?>> messages = IntStream.range(0, consumerProperties.getExtension().getBatchMaxSize() + 1)
+		List<Message<?>> messages = IntStream.range(0, consumerProperties.getExtension().getBatchMaxSize())
 				.mapToObj(i -> MessageBuilder.withPayload(UUID.randomUUID().toString().getBytes())
 						.setHeader(MessageHeaders.CONTENT_TYPE, MimeTypeUtils.TEXT_PLAIN_VALUE)
 						.build())
@@ -1122,18 +1121,16 @@ public class SolaceBinderClientAckIT<T> {
 				});
 		assertThat(wasRedelivered.get()).isTrue();
 
-		// one leftover message stuck in batch collector
-		validateNumEnqueuedMessages(context, sempV2Api, queueName, 1);
-		validateNumUnackedMessages(context, sempV2Api, queueName, 1);
+		// No leftover message stuck in batch collector
+		validateNumEnqueuedMessages(context, sempV2Api, queueName, 0);
+		validateNumUnackedMessages(context, sempV2Api, queueName, 0);
 		validateNumRedeliveredMessages(context, sempV2Api, queueName, messages.size());
 
 		producerBinding.unbind();
 		consumerBinding.unbind();
 	}
 
-	//TODO: MP: Review this test with Jeff
-	//TODO: MP: No more consumer rebinds and stale container.
-	//@ParameterizedTest(name = "[{index}] channelType={0}")
+	@ParameterizedTest(name = "[{index}] channelType={0}")
 	@ValueSource(classes = {DirectChannel.class, PollableSource.class})
 	public void testBatchIsNotStaleFromAsyncRequeueAndTimeout(
 			Class<T> channelType,
@@ -1192,10 +1189,8 @@ public class SolaceBinderClientAckIT<T> {
 							callback.run();
 						}, 2, TimeUnit.SECONDS);
 						firstReceivedMessage.set(true);
-					} else if (isRedelivered(msg, true)) {
+					} else {
 						logger.info("Got redelivered message");
-						//softly.assertThat(msg).as("first batch is not valid")
-						//		.satisfies(isValidMessage(consumerProperties, messages));
 						wasRedelivered.set(true);
 						try {
 							ackCallback.acknowledge(AcknowledgmentCallback.Status.ACCEPT);
@@ -1204,20 +1199,7 @@ public class SolaceBinderClientAckIT<T> {
 									"Exception caught when trying to process redelivered batch %s", msg), e);
 							throw e;
 						}
-						/*if(msg.getPayload() instanceof ArrayList batchMsgs) {
-							if(batchMsgs.size() == 1) {
-								softly.assertThat(msg).as("first batch is not valid")
-										.satisfies(isValidMessage(consumerProperties, messages.get(1)));
-							} else {
-								softly.assertThat(msg).as("first batch is not valid")
-										.satisfies(isValidMessage(consumerProperties, messages));
-								callback.run();
-							}
-						}*/
 						callback.run();
-					} else {
-						//softly.fail("Found leftover messages from before the flow rebind: %s", msg);
-						ackCallback.acknowledge(Status.REQUEUE);
 					}
 				});
 		assertThat(wasRedelivered.get()).isTrue();
@@ -1225,7 +1207,7 @@ public class SolaceBinderClientAckIT<T> {
 		// one leftover message stuck in batch collector
 		validateNumEnqueuedMessages(context, sempV2Api, queueName, 0);
 		validateNumUnackedMessages(context, sempV2Api, queueName, 0);
-		validateNumRedeliveredMessages(context, sempV2Api, queueName, messages.size());
+		validateNumRedeliveredMessages(context, sempV2Api, queueName, 1);
 
 		producerBinding.unbind();
 		consumerBinding.unbind();

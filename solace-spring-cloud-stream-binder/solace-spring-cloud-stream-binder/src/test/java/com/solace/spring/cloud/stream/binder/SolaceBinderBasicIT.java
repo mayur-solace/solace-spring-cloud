@@ -290,8 +290,7 @@ public class SolaceBinderBasicIT extends SpringCloudStreamContext {
 		producerBinding.unbind();
 	}
 
-	//TODO: MP: Review this test
-	//@CartesianTest(name = "[{index}] channelType={0}, batchMode={1}")
+	@CartesianTest(name = "[{index}] channelType={0}, batchMode={1}")
 	@Execution(ExecutionMode.CONCURRENT)
 	public <T> void testConsumerRequeue(
 			@Values(classes = {DirectChannel.class, PollableSource.class}) Class<T> channelType,

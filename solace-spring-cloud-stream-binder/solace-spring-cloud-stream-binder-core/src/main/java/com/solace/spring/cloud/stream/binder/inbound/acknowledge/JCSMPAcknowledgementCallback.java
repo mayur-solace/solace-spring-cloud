@@ -14,7 +14,6 @@ import org.springframework.lang.Nullable;
 class JCSMPAcknowledgementCallback implements AcknowledgmentCallback {
   private final MessageContainer messageContainer;
   private final FlowReceiverContainer flowReceiverContainer;
-  private final boolean hasTemporaryQueue;
   private final ErrorQueueInfrastructure errorQueueInfrastructure;
   private boolean acknowledged = false;
   private boolean autoAckEnabled = true;
@@ -23,11 +22,9 @@ class JCSMPAcknowledgementCallback implements AcknowledgmentCallback {
 
   JCSMPAcknowledgementCallback(MessageContainer messageContainer,
       FlowReceiverContainer flowReceiverContainer,
-      boolean hasTemporaryQueue,
       @Nullable ErrorQueueInfrastructure errorQueueInfrastructure) {
     this.messageContainer = messageContainer;
     this.flowReceiverContainer = flowReceiverContainer;
-    this.hasTemporaryQueue = hasTemporaryQueue;
     this.errorQueueInfrastructure = errorQueueInfrastructure;
   }
 
@@ -104,9 +101,8 @@ class JCSMPAcknowledgementCallback implements AcknowledgmentCallback {
               errorQueueInfrastructure.getErrorQueueName()));
     }
 
-    errorQueueInfrastructure.createCorrelationKey(messageContainer, flowReceiverContainer,
-            hasTemporaryQueue)
-        .handleError(false);
+    errorQueueInfrastructure.createCorrelationKey(messageContainer, flowReceiverContainer)
+        .handleError();
     return true;
   }
 

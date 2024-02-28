@@ -252,7 +252,7 @@ public class JCSMPInboundChannelAdapter extends MessageProducerSupport implement
 
 	private InboundXMLMessageListener buildListener(FlowReceiverContainer flowReceiverContainer) {
 		JCSMPAcknowledgementCallbackFactory ackCallbackFactory = new JCSMPAcknowledgementCallbackFactory(
-				flowReceiverContainer, consumerDestination.isTemporary());
+				flowReceiverContainer);
 		ackCallbackFactory.setErrorQueueInfrastructure(errorQueueInfrastructure);
 
 		InboundXMLMessageListener listener;

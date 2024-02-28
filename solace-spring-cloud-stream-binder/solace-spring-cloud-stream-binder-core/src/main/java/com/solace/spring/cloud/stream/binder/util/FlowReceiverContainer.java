@@ -100,8 +100,6 @@ public class FlowReceiverContainer {
 						.setEndpoint(JCSMPFactory.onlyInstance().createQueue(queueName))
 						.setAckMode(JCSMPProperties.SUPPORTED_MESSAGE_ACK_CLIENT)
 						.setStartState(!isPaused.get());
-
-				//TODO: MP Add Expected Settlement Outcomes to consumer flow properties
 				flowProperties.addRequiredSettlementOutcomes(Outcome.ACCEPTED, Outcome.FAILED, Outcome.REJECTED);
 
 				FlowReceiver flowReceiver = session.createFlow(null, flowProperties, endpointProperties, eventHandler);
@@ -329,7 +327,7 @@ public class FlowReceiverContainer {
 	 * @param messageContainer The message
 	 * @throws SolaceStaleMessageException the message is stale and cannot be acknowledged
 	 */
-	//TODO: MP Added this method
+	//TODO: MP Added this method - Add javadocs
 	public void reject(MessageContainer messageContainer) throws SolaceStaleMessageException {
 		if (messageContainer == null || messageContainer.isAcknowledged()) {
 			return;

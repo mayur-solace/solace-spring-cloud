@@ -169,7 +169,6 @@ public class JCSMPMessageSource extends AbstractMessageSource<Object> implements
 			//TODO If one day the errorChannel or attributesHolder can be retrieved, use those instead
 			logger.warn(e, String.format("XMLMessage %s cannot be consumed. It will be rejected",
 					messageContainer.getMessage().getMessageId()));
-			//AckUtils.reject(acknowledgmentCallback);
 			if (!SolaceAckUtil.republishToErrorQueue(acknowledgmentCallback)) {
 				AckUtils.requeue(acknowledgmentCallback);
 			}
@@ -254,7 +253,7 @@ public class JCSMPMessageSource extends AbstractMessageSource<Object> implements
 				postStart.accept(JCSMPFactory.onlyInstance().createQueue(queueName));
 			}
 
-			ackCallbackFactory = new JCSMPAcknowledgementCallbackFactory(flowReceiverContainer, hasTemporaryQueue);
+			ackCallbackFactory = new JCSMPAcknowledgementCallbackFactory(flowReceiverContainer);
 			ackCallbackFactory.setErrorQueueInfrastructure(errorQueueInfrastructure);
 
 			isRunning = true;
