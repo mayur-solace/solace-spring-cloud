@@ -21,8 +21,6 @@ public class SolaceAckUtil {
         && jcsmpAcknowledgementCallback.isErrorQueueEnabled()) {
       try {
         if (jcsmpAcknowledgementCallback.republishToErrorQueue()) {
-          //TODO: setting ACKed is unnecessary for binder but may be good for external use.
-          jcsmpAcknowledgementCallback.setAcknowledged(true);
           return true;
         }
       } catch (Exception e) {

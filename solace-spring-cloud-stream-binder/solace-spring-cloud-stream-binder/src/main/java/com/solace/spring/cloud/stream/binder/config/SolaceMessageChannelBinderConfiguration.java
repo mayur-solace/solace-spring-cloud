@@ -1,5 +1,6 @@
 package com.solace.spring.cloud.stream.binder.config;
 
+import static com.solacesystems.jcsmp.CapabilityType.SUPPORTED_MESSAGE_SETTLEMENT_CAPABILITIES;
 import com.solace.spring.cloud.stream.binder.SolaceMessageChannelBinder;
 import com.solace.spring.cloud.stream.binder.health.SolaceBinderHealthAccessor;
 import com.solace.spring.cloud.stream.binder.health.handlers.SolaceSessionEventHandler;
@@ -64,6 +65,10 @@ public class SolaceMessageChannelBinderConfiguration {
 				// as the call closing JCSMP session also delete the context
 				// and terminates the application
 				solaceSessionEventHandler.setSessionHealthUp();
+			}
+
+			if (!jcsmpSession.isCapable(SUPPORTED_MESSAGE_SETTLEMENT_CAPABILITIES)) {
+				logger.warn("The connected Solace PubSub+ Broker is not compatible. It doesn't support message NACK capability. Consumer bindings will fail to start.");
 			}
 		} catch (Exception e) {
 			if (context != null) {

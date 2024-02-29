@@ -6,6 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 import com.solace.spring.boot.autoconfigure.SolaceJavaAutoConfiguration;
 import com.solace.spring.cloud.stream.binder.properties.SolaceConsumerProperties;
 import com.solace.spring.cloud.stream.binder.util.ErrorQueueInfrastructure;
@@ -24,6 +29,7 @@ import com.solace.test.integration.semp.v2.monitor.model.MonitorMsgVpnQueueMsg;
 import com.solace.test.integration.semp.v2.monitor.model.MonitorMsgVpnQueueMsgsResponse;
 import com.solace.test.integration.semp.v2.monitor.model.MonitorSempMeta;
 import com.solace.test.integration.semp.v2.monitor.model.MonitorSempPaging;
+import com.solacesystems.jcsmp.BytesXMLMessage;
 import com.solacesystems.jcsmp.EndpointProperties;
 import com.solacesystems.jcsmp.JCSMPException;
 import com.solacesystems.jcsmp.JCSMPFactory;
@@ -31,6 +37,7 @@ import com.solacesystems.jcsmp.JCSMPProperties;
 import com.solacesystems.jcsmp.JCSMPSession;
 import com.solacesystems.jcsmp.Queue;
 import com.solacesystems.jcsmp.TextMessage;
+import com.solacesystems.jcsmp.XMLMessage.Outcome;
 import com.solacesystems.jcsmp.XMLMessageProducer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -416,12 +423,13 @@ public class JCSMPAcknowledgementCallbackIT {
 		}
 	}
 
-	@ParameterizedTest(name = "[{index}] numMessages={0}")
-	@ValueSource(ints = {1, 255})
-	public void testReAckAfterRequeue(int numMessages,
+	@CartesianTest(name = "[{index}] numMessages={0}, isDurable={1}")
+	public void testReAckAfterRequeue(@Values(ints = {1, 255}) int numMessages,
+										@Values(booleans = {false, true}) boolean isDurable,
 									  JCSMPSession jcsmpSession,
-									  Queue queue,
+									  Queue durableQueue,
 									  SempV2Api sempV2Api) throws Throwable {
+		Queue queue = isDurable ? durableQueue : jcsmpSession.createTemporaryQueue();
 		FlowReceiverContainer flowReceiverContainer = initializeFlowReceiverContainer(jcsmpSession, queue);
 		JCSMPAcknowledgementCallbackFactory acknowledgementCallbackFactory = new JCSMPAcknowledgementCallbackFactory(
 				flowReceiverContainer);
@@ -462,7 +470,7 @@ public class JCSMPAcknowledgementCallbackIT {
 		List<MessageContainer> messageContainers = sendAndReceiveMessages(queue, flowReceiverContainer, numMessages)
 				.stream()
 				.map(Mockito::spy)
-				.peek(m -> Mockito.when(m.isStale()).thenReturn(true))
+				.peek(m -> when(m.isStale()).thenReturn(true))
 				.collect(Collectors.toList());
 		Optional<String> errorQueueName = Optional.of(createErrorQueue)
 				.filter(e -> e)
@@ -494,6 +502,58 @@ public class JCSMPAcknowledgementCallbackIT {
 				validateNumEnqueuedMessages(sempV2Api, errorQueueName.get(), 0);
 				validateNumRedeliveredMessages(sempV2Api, errorQueueName.get(), 0);
 			}
+		}
+	}
+
+	@CartesianTest(name = "[{index}] numMessages={0}, isDurable={1}")
+	public void testAckThrowsException(@Values(ints = {1, 255}) int numMessages,
+			@Values(booleans = {false, true}) boolean isDurable,
+			JCSMPSession jcsmpSession, Queue durableQueue, SempV2Api sempV2Api) throws Exception {
+		Queue queue = isDurable ? durableQueue : jcsmpSession.createTemporaryQueue();
+		FlowReceiverContainer flowReceiverContainer = initializeFlowReceiverContainer(jcsmpSession, queue);
+		JCSMPAcknowledgementCallbackFactory acknowledgementCallbackFactory = new JCSMPAcknowledgementCallbackFactory(
+				flowReceiverContainer);
+
+		List<MessageContainer> messageContainers = sendAndReceiveMessages(queue, flowReceiverContainer, numMessages)
+				.stream()
+				.map(Mockito::spy)
+				.peek(m -> {
+					BytesXMLMessage bytesXMLMessage = spy(m.getMessage());
+					when(m.getMessage()).thenReturn(bytesXMLMessage);
+					try {
+						doThrow(new JCSMPException("expected exception")).when(bytesXMLMessage)
+								.settle(any(Outcome.class));
+					} catch (Exception e) {
+						fail("Unwanted exception");
+					}
+				}).collect(Collectors.toList());
+
+		AcknowledgmentCallback acknowledgmentCallback = createAcknowledgmentCallback(acknowledgementCallbackFactory,
+				messageContainers);
+
+		assertThat(acknowledgmentCallback.isAcknowledged()).isFalse();
+		assertThat(acknowledgmentCallback.isAutoAck()).isTrue();
+		assertThat(SolaceAckUtil.isErrorQueueEnabled(acknowledgmentCallback)).isFalse();
+
+		for (AcknowledgmentCallback.Status status : AcknowledgmentCallback.Status.values()) {
+			SolaceAcknowledgmentException exception = assertThrows(SolaceAcknowledgmentException.class,
+					() -> acknowledgmentCallback.acknowledge(status));
+			Class<? extends Throwable> expectedRootCause = JCSMPException.class;
+
+			assertThat(acknowledgmentCallback.isAcknowledged())
+					.describedAs("Unexpected ack state for %s re-ack", status)
+					.isFalse();
+			assertThat(exception)
+					.describedAs("Unexpected root cause for %s re-ack", status)
+					.hasRootCauseInstanceOf(expectedRootCause);
+			if (exception instanceof SolaceBatchAcknowledgementException) {
+				assertThat(((SolaceBatchAcknowledgementException) exception).isAllStaleExceptions())
+						.describedAs("Unexpected stale batch state for %s re-ack", status)
+						.isEqualTo(expectedRootCause.equals(SolaceStaleMessageException.class));
+			}
+			validateNumEnqueuedMessages(sempV2Api, queue.getName(), numMessages);
+			validateNumRedeliveredMessages(sempV2Api, queue.getName(), 0);
+			validateQueueBindSuccesses(sempV2Api, queue.getName(), 1);
 		}
 	}
 
@@ -537,7 +597,7 @@ public class JCSMPAcknowledgementCallbackIT {
 
 	private FlowReceiverContainer initializeFlowReceiverContainer(JCSMPSession jcsmpSession, Queue queue)
 			throws JCSMPException {
-		if (flowReceiverContainerReference.compareAndSet(null, Mockito.spy(new FlowReceiverContainer(
+		if (flowReceiverContainerReference.compareAndSet(null, spy(new FlowReceiverContainer(
 				jcsmpSession,
 				queue.getName(),
 				new EndpointProperties())))) {

@@ -121,7 +121,17 @@ class JCSMPBatchAcknowledgementCallback implements AcknowledgmentCallback {
 		return acknowledgementCallbacks.get(0).isErrorQueueEnabled();
 	}
 
+	/**
+	 * Send the message batch to the error queue and acknowledge the message.
+	 *
+	 * @return {@code true} if successful, {@code false} if {@code errorQueueInfrastructure} is not
+	 * defined or batch is already acknowledged.
+	 */
 	boolean republishToErrorQueue() {
+		if(!isErrorQueueEnabled()) {
+			return false;
+		}
+
 		if (isAcknowledged()) {
 			if (logger.isDebugEnabled()) {
 				logger.debug("Batch message is already acknowledged");
@@ -138,10 +148,6 @@ class JCSMPBatchAcknowledgementCallback implements AcknowledgmentCallback {
 					msgIdx);
 			try {
 				if (messageAcknowledgementCallback.republishToErrorQueue()) {
-					messageAcknowledgementCallback.setAcknowledged(true);
-				}
-
-				if (messageAcknowledgementCallback.isAcknowledged()) {
 					numAcked.getAndIncrement();
 				}
 			} catch (Exception e) {
@@ -162,7 +168,6 @@ class JCSMPBatchAcknowledgementCallback implements AcknowledgmentCallback {
 					"Failed to acknowledge batch message", firstEncounteredException);
 		}
 
-		acknowledged = true;
-		return acknowledgementCallbacks.size() == numAcked.get();
+		return true;
 	}
 }

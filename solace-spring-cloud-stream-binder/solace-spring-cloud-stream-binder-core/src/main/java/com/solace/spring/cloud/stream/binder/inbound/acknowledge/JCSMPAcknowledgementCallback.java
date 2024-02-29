@@ -128,8 +128,4 @@ class JCSMPAcknowledgementCallback implements AcknowledgmentCallback {
   boolean isErrorQueueEnabled() {
      return  errorQueueInfrastructure != null;
   }
-
-  void setAcknowledged(boolean acknowledged) {
-    this.acknowledged = acknowledged;
-  }
 }

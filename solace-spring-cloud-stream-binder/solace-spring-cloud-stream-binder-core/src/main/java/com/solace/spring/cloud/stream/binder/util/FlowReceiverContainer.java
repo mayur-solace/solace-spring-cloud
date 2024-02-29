@@ -286,7 +286,11 @@ public class FlowReceiverContainer {
 					messageContainer.getId(), messageContainer.getMessage().getMessageId()));
 		}
 
-		messageContainer.getMessage().ackMessage();
+		try {
+			messageContainer.getMessage().settle(Outcome.ACCEPTED);
+		} catch (JCSMPException ex) {
+			throw new SolaceAcknowledgmentException("Failed to ACK a message", ex);
+		}
 		unacknowledgedMessageTracker.decrement();
 		messageContainer.setAcknowledged(true);
 	}
@@ -340,7 +344,7 @@ public class FlowReceiverContainer {
 		try {
 		messageContainer.getMessage().settle(Outcome.REJECTED);
 		} catch (JCSMPException ex) {
-			throw new SolaceAcknowledgmentException("Failed to NACK/REQUEUE a message", ex);
+			throw new SolaceAcknowledgmentException("Failed to NACK/Reject a message", ex);
 		}
 
 		unacknowledgedMessageTracker.decrement();
