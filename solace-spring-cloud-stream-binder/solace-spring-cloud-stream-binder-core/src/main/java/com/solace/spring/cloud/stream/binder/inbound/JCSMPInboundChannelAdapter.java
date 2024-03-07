@@ -42,7 +42,6 @@ import org.springframework.retry.RetryContext;
 import org.springframework.retry.RetryListener;
 import org.springframework.retry.support.RetryTemplate;
 import org.springframework.util.Assert;
-import org.springframework.util.backoff.ExponentialBackOff;
 
 public class JCSMPInboundChannelAdapter extends MessageProducerSupport implements OrderlyShutdownCapable, Pausable {
 	private final String id = UUID.randomUUID().toString();
@@ -113,11 +112,6 @@ public class JCSMPInboundChannelAdapter extends MessageProducerSupport implement
 
 		Queue queue = JCSMPFactory.onlyInstance().createQueue(queueName);
 
-		ExponentialBackOff exponentialBackOff = new ExponentialBackOff();
-		exponentialBackOff.setInitialInterval(consumerProperties.getExtension().getFlowRebindBackOffInitialInterval());
-		exponentialBackOff.setMaxInterval(consumerProperties.getExtension().getFlowRebindBackOffMaxInterval());
-		exponentialBackOff.setMultiplier(consumerProperties.getExtension().getFlowRebindBackOffMultiplier());
-
 		for (int i = 0, numToCreate = consumerProperties.getConcurrency() - flowReceivers.size(); i < numToCreate; i++) {
 			logger.info(String.format("Creating consumer %s of %s for inbound adapter %s",
 					i + 1, consumerProperties.getConcurrency(), id));
@@ -125,8 +119,7 @@ public class JCSMPInboundChannelAdapter extends MessageProducerSupport implement
 					jcsmpSession,
 					queueName,
 					endpointProperties);
-			flowReceiverContainer.setRebindWaitTimeout(consumerProperties.getExtension().getFlowPreRebindWaitTimeout(),
-					TimeUnit.MILLISECONDS);
+
 			if (paused.get()) {
 				logger.info(String.format(
 						"Inbound adapter %s is paused, pausing newly created flow receiver container %s",

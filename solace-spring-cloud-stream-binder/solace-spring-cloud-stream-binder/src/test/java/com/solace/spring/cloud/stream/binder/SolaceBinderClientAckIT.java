@@ -37,7 +37,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.assertj.core.api.SoftAssertions;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -54,7 +53,6 @@ import org.springframework.cloud.stream.config.BindingProperties;
 import org.springframework.integration.StaticMessageHeaderAccessor;
 import org.springframework.integration.acks.AckUtils;
 import org.springframework.integration.acks.AcknowledgmentCallback;
-import org.springframework.integration.acks.AcknowledgmentCallback.Status;
 import org.springframework.integration.channel.DirectChannel;
 import org.springframework.integration.support.MessageBuilder;
 import org.springframework.messaging.Message;
@@ -1152,7 +1150,6 @@ public class SolaceBinderClientAckIT<T> {
 
 		ExtendedConsumerProperties<SolaceConsumerProperties> consumerProperties = context.createConsumerProperties();
 		consumerProperties.setBatchMode(true);
-		consumerProperties.getExtension().setFlowPreRebindWaitTimeout(TimeUnit.SECONDS.toMillis(1));
 		consumerProperties.getExtension().setBatchTimeout((int) TimeUnit.SECONDS.toMillis(10));
 		consumerProperties.getExtension().setQueueMaxMsgRedelivery(1);
 

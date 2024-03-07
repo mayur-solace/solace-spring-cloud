@@ -56,9 +56,6 @@ public class FlowReceiverContainer {
 	private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 	private final Condition bindCondition = readWriteLock.writeLock().newCondition();
 
-	private long rebindWaitTimeout = -1;
-	private TimeUnit rebindWaitTimeoutUnit = TimeUnit.SECONDS;
-
 	private static final Log logger = LogFactory.getLog(FlowReceiverContainer.class);
 	private final XMLMessageMapper xmlMessageMapper = new XMLMessageMapper();
 	private FlowEventHandler eventHandler;
@@ -361,15 +358,6 @@ public class FlowReceiverContainer {
 		} finally {
 			readLock.unlock();
 		}
-	}
-
-	public void setRebindWaitTimeout(long timeout, TimeUnit unit) {
-		this.rebindWaitTimeout = timeout;
-		this.rebindWaitTimeoutUnit = unit;
-	}
-
-	public long getRebindWaitTimeout(TimeUnit unit) {
-		return unit.convert(this.rebindWaitTimeout, this.rebindWaitTimeoutUnit);
 	}
 
 	public void pause() {

@@ -19,6 +19,15 @@ import com.solacesystems.jcsmp.JCSMPFactory;
 import com.solacesystems.jcsmp.JCSMPSession;
 import com.solacesystems.jcsmp.JCSMPTransportException;
 import com.solacesystems.jcsmp.Queue;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.springframework.cloud.stream.binder.ExtendedConsumerProperties;
 import org.springframework.context.Lifecycle;
 import org.springframework.integration.acks.AckUtils;
@@ -28,18 +37,6 @@ import org.springframework.integration.endpoint.AbstractMessageSource;
 import org.springframework.lang.Nullable;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessagingException;
-import org.springframework.util.backoff.ExponentialBackOff;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 public class JCSMPMessageSource extends AbstractMessageSource<Object> implements Lifecycle, Pausable {
 	private final String id = UUID.randomUUID().toString();
@@ -218,18 +215,12 @@ public class JCSMPMessageSource extends AbstractMessageSource<Object> implements
 
 			try {
 				if (flowReceiverContainer == null) {
-					ExponentialBackOff exponentialBackOff = new ExponentialBackOff();
-					exponentialBackOff.setInitialInterval(consumerProperties.getExtension().getFlowRebindBackOffInitialInterval());
-					exponentialBackOff.setMaxInterval(consumerProperties.getExtension().getFlowRebindBackOffMaxInterval());
-					exponentialBackOff.setMultiplier(consumerProperties.getExtension().getFlowRebindBackOffMultiplier());
-
 					flowReceiverContainer = new FlowReceiverContainer(
 							jcsmpSession,
 							queueName,
 							endpointProperties);
 					this.xmlMessageMapper = flowReceiverContainer.getXMLMessageMapper();
-					flowReceiverContainer.setRebindWaitTimeout(consumerProperties.getExtension().getFlowPreRebindWaitTimeout(),
-							TimeUnit.MILLISECONDS);
+
 					if (paused) {
 						logger.info(String.format(
 								"Message source %s is paused, pausing newly created flow receiver container %s",
