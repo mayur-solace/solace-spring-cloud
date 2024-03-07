@@ -165,7 +165,7 @@ class JCSMPBatchAcknowledgementCallback implements AcknowledgmentCallback {
 
 		if (firstEncounteredException != null) {
 			throw new SolaceBatchAcknowledgementException(failedMessageIndexes, allStaleExceptions,
-					"Failed to acknowledge batch message", firstEncounteredException);
+					"Failed to send batch message to error queue", firstEncounteredException);
 		}
 
 		return true;

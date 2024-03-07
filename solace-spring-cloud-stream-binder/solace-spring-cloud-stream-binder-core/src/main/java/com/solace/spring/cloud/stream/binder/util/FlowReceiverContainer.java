@@ -49,10 +49,7 @@ public class FlowReceiverContainer {
 	// Also assuming we won't ever exceed the limit of an unsigned long...
 	private final UnsignedCounterBarrier unacknowledgedMessageTracker = new UnsignedCounterBarrier();
 
-	//TODO: MP: Remove reference to #rebind(UUID) from docs
 	/**
-	 * {link #rebind(UUID)} can be invoked while this {@link FlowReceiverContainer} is "active"
-	 * (i.e. after a {@link #bind()} and before a {@link #unbind()}).
 	 * Operations which normally expect an active flow to function should use this lock's read lock to seamlessly
 	 * operate as if the flow <b>was not</b> rebinding.
 	 */
@@ -296,14 +293,17 @@ public class FlowReceiverContainer {
 	}
 
 	/**
-	 * <p>Acknowledge the message off the broker and mark the provided message container as acknowledged.</p>
-	 * <p><b>WARNING:</b> Only messages created by this {@link FlowReceiverContainer} instance's {@link #receive()}
-	 * may be passed as a parameter to this function. Failure to do so will misalign the timing for when rebinds
-	 * will occur, causing rebinds to unintentionally trigger early/late.</p>
+	 * <p>Represents a negative acknowledgement outcome. Is used to signal that the application
+	 * failed to process the message and request broker to requeue/redeliver the message and mark the
+	 * provided message container as acknowledged.</p> <p>Message may be moved to DMQ by broker once
+	 * max-redelivered configured on endpoint is reached. Message may be delayed if the endpoint has
+	 * delayed redelivery configured.</p>
+	 * <p><b>WARNING:</b> Only messages created by this {@link FlowReceiverContainer} instance's
+	 * {@link #receive()} may be passed as a parameter to this function.</p>
+	 *
 	 * @param messageContainer The message
 	 * @throws SolaceStaleMessageException the message is stale and cannot be acknowledged
 	 */
-	//TODO: MP Added this method
 	public void requeue(MessageContainer messageContainer) throws SolaceStaleMessageException {
 		if (messageContainer == null || messageContainer.isAcknowledged()) {
 			return;
@@ -316,7 +316,7 @@ public class FlowReceiverContainer {
 		try {
 			messageContainer.getMessage().settle(Outcome.FAILED);
 		} catch (JCSMPException ex) {
-			throw new SolaceAcknowledgmentException("Failed to NACK/REQUEUE a message", ex);
+			throw new SolaceAcknowledgmentException("Failed to REQUEUE a message", ex);
 		}
 
 		unacknowledgedMessageTracker.decrement();
@@ -324,14 +324,16 @@ public class FlowReceiverContainer {
 	}
 
 	/**
-	 * <p>Acknowledge the message off the broker and mark the provided message container as acknowledged.</p>
-	 * <p><b>WARNING:</b> Only messages created by this {@link FlowReceiverContainer} instance's {@link #receive()}
-	 * may be passed as a parameter to this function. Failure to do so will misalign the timing for when rebinds
-	 * will occur, causing rebinds to unintentionally trigger early/late.</p>
+	 * <p>Represents a negative acknowledgement outcome. Is used to signal that the application has
+	 * rejected the message such as when application determines the message is invalid and mark the
+	 * provided message container as acknowledged.</p><p>Message will NOT be redelivered. Message will
+	 * be moved to DMQ. If DMQ is not configured, message is discarded/deleted.</p>
+	 * <p><b>WARNING:</b> Only messages created by this {@link FlowReceiverContainer} instance's
+	 * {@link #receive()} may be passed as a parameter to this function.</p>
+	 *
 	 * @param messageContainer The message
 	 * @throws SolaceStaleMessageException the message is stale and cannot be acknowledged
 	 */
-	//TODO: MP Added this method - Add javadocs
 	public void reject(MessageContainer messageContainer) throws SolaceStaleMessageException {
 		if (messageContainer == null || messageContainer.isAcknowledged()) {
 			return;
@@ -344,7 +346,7 @@ public class FlowReceiverContainer {
 		try {
 		messageContainer.getMessage().settle(Outcome.REJECTED);
 		} catch (JCSMPException ex) {
-			throw new SolaceAcknowledgmentException("Failed to NACK/Reject a message", ex);
+			throw new SolaceAcknowledgmentException("Failed to REJECT a message", ex);
 		}
 
 		unacknowledgedMessageTracker.decrement();
